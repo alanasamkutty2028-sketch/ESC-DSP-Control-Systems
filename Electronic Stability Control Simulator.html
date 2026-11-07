@@ -1,0 +1,556 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Electronic Stability Control Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout concept: an instrument-bench page. Road lanes and controls side by side, a comparison table, four traces, then guided experiments. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --ink: #14212b;
+  --muted: #55646f;
+  --line: #d3dae1;
+  --accent: #0a6d86;
+  --accent-ink: #ffffff;
+  --road: #e1e7ec;
+  --s-off: #c63d2b;
+  --s-esc: #1b8548;
+  --s-raw: #d9801a;
+  --s-filt: #1f5fbf;
+  --s-true: #14212b;
+  --s-sens: #9aa7b3;
+  --f-display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e151b; --surface: #16202a; --ink: #e5ecf1; --muted: #92a2b0; --line: #2a3945;
+    --accent: #4cc2dd; --accent-ink: #06222b; --road: #1d2933;
+    --s-off: #ef6b57; --s-esc: #4ccf86; --s-raw: #f0a840; --s-filt: #6fa4f2; --s-true: #e5ecf1; --s-sens: #5d6e7c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e151b; --surface: #16202a; --ink: #e5ecf1; --muted: #92a2b0; --line: #2a3945;
+  --accent: #4cc2dd; --accent-ink: #06222b; --road: #1d2933;
+  --s-off: #ef6b57; --s-esc: #4ccf86; --s-raw: #f0a840; --s-filt: #6fa4f2; --s-true: #e5ecf1; --s-sens: #5d6e7c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 400 15px/1.55 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 40px;
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+h1 { font: 700 clamp(2.3rem, 6vw, 3.6rem)/0.98 var(--f-display); letter-spacing: 0.01em; text-transform: uppercase; }
+h2 { font: 600 1.45rem/1.1 var(--f-display); letter-spacing: 0.04em; text-transform: uppercase; }
+h3 { font: 600 0.8rem/1.2 var(--f-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+p { margin: 0; }
+.eyebrow { font: 500 0.78rem/1.2 var(--f-data); letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+.byline { font: 400 0.9rem/1.4 var(--f-data); color: var(--muted); }
+.byline b { color: var(--ink); font-weight: 500; }
+header { display: flex; flex-direction: column; gap: 12px; }
+.lede { max-width: 68ch; color: var(--muted); font-size: 1.02rem; }
+
+/* signal chain */
+.chain { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.node { flex: 1 1 150px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; position: relative; }
+.node b { font: 600 0.72rem/1.2 var(--f-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.node span { font: 400 0.84rem/1.35 var(--f-data); overflow-wrap: anywhere; }
+.node.dsp { border-color: var(--accent); }
+.node.dsp b { color: var(--accent); }
+.arrow { align-self: center; color: var(--muted); font: 500 1rem var(--f-data); flex: 0 0 auto; }
+@media (max-width: 760px) { .arrow { display: none; } }
+
+/* lab */
+.lab { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 900px) { .lab { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.note { font-size: 0.8rem; color: var(--muted); line-height: 1.45; }
+canvas { display: block; width: 100%; touch-action: pan-y; cursor: crosshair; }
+#lanes { height: 262px; }
+.chart canvas { height: 210px; }
+.transport { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+button { font: 500 0.9rem var(--f-body); cursor: pointer; border-radius: 6px; padding: 8px 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; min-width: 92px; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type=range] { width: 100%; min-width: 0; margin: 4px 0; accent-color: var(--accent); }
+.transport input[type=range] { flex: 1 1 160px; width: auto; }
+.readout { font: 400 0.82rem/1.5 var(--f-data); color: var(--muted); display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 2px 16px; font-variant-numeric: tabular-nums; }
+.readout b { color: var(--ink); font-weight: 500; }
+
+.controls { display: flex; flex-direction: column; gap: 14px; }
+.ctl { display: flex; flex-direction: column; gap: 5px; }
+.ctl label, .ctl .lbl { display: flex; justify-content: space-between; gap: 8px; font-weight: 500; font-size: 0.9rem; }
+.ctl output { font: 500 0.85rem var(--f-data); color: var(--accent); font-variant-numeric: tabular-nums; }
+.ctl .hint { font-size: 0.76rem; color: var(--muted); }
+select { font: 400 0.9rem var(--f-body); padding: 7px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; }
+.switch { display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: 0.9rem; cursor: pointer; }
+.switch input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* comparison */
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); font-size: 0.9rem; white-space: nowrap; }
+th { font: 600 0.72rem var(--f-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+td.num { font-family: var(--f-data); }
+td.good { color: var(--s-esc); }
+.chip { display: inline-block; font: 500 0.78rem var(--f-data); padding: 2px 9px; border-radius: 99px; border: 1px solid currentColor; }
+.chip.ok { color: var(--s-esc); } .chip.warn { color: var(--s-raw); } .chip.bad { color: var(--s-off); }
+
+/* charts */
+.charts { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 820px) { .charts { grid-template-columns: minmax(0, 1fr); } }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.8rem; color: var(--muted); }
+.legend i { display: inline-block; width: 18px; height: 0; border-top: 3px solid; vertical-align: middle; margin-right: 6px; }
+.legend i.dash { border-top-style: dashed; }
+
+/* experiments */
+.try { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 860px) { .try { grid-template-columns: minmax(0, 1fr); } }
+.exp { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.exp h3 { color: var(--accent); }
+.exp p { font-size: 0.9rem; }
+footer { font-size: 0.82rem; color: var(--muted); max-width: 80ch; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Control Systems + DSP · Topic 12</div>
+    <h1>Electronic Stability Control</h1>
+    <p class="lede">A car on a slippery road is steered through a slalom. The ESC unit compares the yaw rate the driver asked for with the yaw rate a gyro reports, and brakes one wheel to close the gap. The gyro signal is noisy, so a digital filter cleans it first. Change the filter, the noise and the road, then watch what the controller does with the result.</p>
+    <div class="byline"><b>Alan A Samkutty</b> · S5 ECA</div>
+  </header>
+
+  <section aria-label="Signal chain">
+    <div class="chain">
+      <div class="node"><b>Sensors</b><span>Gyro, lateral accel., wheel speed, steering angle</span></div>
+      <div class="arrow">→</div>
+      <div class="node dsp"><b>DSP</b><span id="dspNode">8 Hz low-pass at 200 Hz</span></div>
+      <div class="arrow">→</div>
+      <div class="node"><b>Controller</b><span>PI on yaw-rate error</span></div>
+      <div class="arrow">→</div>
+      <div class="node"><b>Actuator</b><span>Brake one wheel, yaw moment Mz</span></div>
+      <div class="arrow">→</div>
+      <div class="node"><b>Vehicle</b><span>Single-track yaw dynamics</span></div>
+    </div>
+  </section>
+
+  <section class="lab" aria-label="Simulation">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Road view</h2>
+        <span class="note" id="scaleNote"></span>
+      </div>
+      <canvas id="lanes" role="img" aria-label="Top view of two cars driving the maneuver, one without ESC and one with ESC"></canvas>
+      <div class="transport">
+        <button class="primary" id="run" type="button">Replay</button>
+        <input type="range" id="scrub" min="0" max="8" step="0.005" value="0" aria-label="Time">
+        <span class="byline" id="tlabel">t = 0.00 s</span>
+      </div>
+      <div class="readout" id="readout"></div>
+    </div>
+
+    <div class="panel controls">
+      <h2>Controls</h2>
+      <div class="ctl">
+        <label for="man">Maneuver</label>
+        <select id="man">
+          <option value="slalom">Slalom, 0.5 Hz steering</option>
+          <option value="swerve">Sudden swerve, one cycle</option>
+          <option value="step">Step steer, hold 4.5 s</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <label for="amp">Steering amplitude <output id="ampO"></output></label>
+        <input type="range" id="amp" min="0.5" max="6" step="0.1" value="2.6">
+      </div>
+      <div class="ctl">
+        <label for="spd">Speed <output id="spdO"></output></label>
+        <input type="range" id="spd" min="15" max="35" step="1" value="25">
+      </div>
+      <div class="ctl">
+        <label for="mu">Road friction μ <output id="muO"></output></label>
+        <input type="range" id="mu" min="0.15" max="1" step="0.01" value="0.45">
+        <span class="hint">Ice 0.15 · snow 0.3 · wet 0.5 · dry 0.9</span>
+      </div>
+      <div class="ctl">
+        <span class="lbl">Digital filter</span>
+        <label class="switch" for="filt"><input type="checkbox" id="filt" checked> Filter the yaw-rate signal</label>
+      </div>
+      <div class="ctl">
+        <label for="fc">Filter cutoff <output id="fcO"></output></label>
+        <input type="range" id="fc" min="1" max="30" step="1" value="8">
+      </div>
+      <div class="ctl">
+        <label for="sig">Sensor noise <output id="sigO"></output></label>
+        <input type="range" id="sig" min="0" max="0.05" step="0.001" value="0.012">
+        <span class="hint">White noise plus a 45 Hz vibration line, 1σ in rad/s</span>
+      </div>
+      <button type="button" id="reset">Reset to defaults</button>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Results">
+    <div class="panel-head">
+      <h2>Result of this run</h2>
+      <span class="note">Heuristic status: sideslip below 4° stable, below 8° sliding, above that loss of control</span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Measure</th><th>No ESC</th><th>With ESC</th></tr></thead>
+        <tbody>
+          <tr><td>Status</td><td id="stOff"></td><td id="stEsc"></td></tr>
+          <tr><td>RMS yaw-rate error (rad/s)</td><td class="num" id="eOff"></td><td class="num" id="eEsc"></td></tr>
+          <tr><td>Peak sideslip angle (°)</td><td class="num" id="bOff"></td><td class="num" id="bEsc"></td></tr>
+          <tr><td>Yaw-moment chatter (N·m, RMS step)</td><td class="num">none</td><td class="num" id="cEsc"></td></tr>
+          <tr><td>Filter phase lag at 1 Hz (ms)</td><td class="num">none</td><td class="num" id="lagEsc"></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="charts" aria-label="Traces">
+    <div class="panel chart">
+      <h3>Yaw rate (rad/s)</h3>
+      <div class="legend"><span><i class="dash" style="border-color:var(--s-true)"></i>Desired</span><span><i style="border-color:var(--s-off)"></i>No ESC</span><span><i style="border-color:var(--s-esc)"></i>With ESC</span></div>
+      <canvas id="c1" role="img" aria-label="Yaw rate versus time"></canvas>
+    </div>
+    <div class="panel chart">
+      <h3>Body sideslip angle (°)</h3>
+      <div class="legend"><span><i style="border-color:var(--s-off)"></i>No ESC</span><span><i style="border-color:var(--s-esc)"></i>With ESC</span></div>
+      <canvas id="c2" role="img" aria-label="Sideslip angle versus time"></canvas>
+    </div>
+    <div class="panel chart">
+      <h3>Corrective yaw moment Mz (N·m)</h3>
+      <div class="legend"><span><i style="border-color:var(--s-raw)"></i>Raw feedback</span><span><i style="border-color:var(--s-filt)"></i>Filtered feedback</span></div>
+      <canvas id="c3" role="img" aria-label="Yaw moment command versus time"></canvas>
+    </div>
+    <div class="panel chart">
+      <h3>Yaw-rate sensor and DSP output (rad/s)</h3>
+      <div class="legend"><span><i style="border-color:var(--s-sens)"></i>Raw sensor</span><span><i style="border-color:var(--s-filt)"></i>Filtered</span><span><i class="dash" style="border-color:var(--s-true)"></i>True yaw rate</span></div>
+      <canvas id="c4" role="img" aria-label="Raw and filtered yaw-rate sensor signal versus time"></canvas>
+    </div>
+  </section>
+
+  <section aria-label="Experiments" style="display:flex;flex-direction:column;gap:12px">
+    <h2>Try this</h2>
+    <div class="try">
+      <div class="exp">
+        <h3>1 · No filter, noisy gyro</h3>
+        <p>Feed the raw signal back and raise the noise. The yaw-moment chart turns into a buzz, because noise goes straight through the proportional gain. Real brake valves would chatter.</p>
+        <button type="button" data-preset="raw">Load this setup</button>
+      </div>
+      <div class="exp">
+        <h3>2 · Filter cutoff at 1 Hz</h3>
+        <p>The noise is gone, but the filtered trace now lags and shrinks compared with the true yaw rate. The controller reacts late, and the yaw-rate error grows, even past the no-ESC case. Filtering costs phase, so cutoff is a trade-off.</p>
+        <button type="button" data-preset="slow">Load this setup</button>
+      </div>
+      <div class="exp">
+        <h3>3 · Icy road, high speed</h3>
+        <p>Drop μ and raise speed. The car loses grip without ESC. The reference yaw rate is limited to what the road can support, so ESC asks for less than the driver steers.</p>
+        <button type="button" data-preset="ice">Load this setup</button>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Model: single-track vehicle (1500 kg, Iz 2500 kg·m², wheelbase 2.7 m) at constant speed with saturating tyre forces, a PI yaw-rate controller running at 200 Hz, a 2nd-order Butterworth low-pass filter and an ideal brake modulator limited to ±6 kN·m. It is a teaching model, not a calibrated vehicle. Road-view lateral distance and sideslip angle are exaggerated so they can be seen; the scale is shown above the lanes.
+  </footer>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const T = 8, DT = 0.001, FS = 200, STEP = 5, TS = 1 / FS;
+  const P = { m: 1500, Iz: 2500, a: 1.2, b: 1.5, g: 9.81, Cf: 60000, Cr: 60000 };
+  P.L = P.a + P.b; P.Fzf = P.m * P.g * P.b / P.L; P.Fzr = P.m * P.g * P.a / P.L;
+  P.Kus = P.m / P.L * (P.b / P.Cf - P.a / P.Cr);
+  const KP = 9000, KI = 14000, MZMAX = 6000;
+  const DEFAULTS = { man: 'slalom', amp: 2.6, spd: 25, mu: 0.45, filt: true, fc: 8, sig: 0.012 };
+  const S = Object.assign({}, DEFAULTS);
+
+  // ---------- random numbers: same noise sequence in every run ----------
+  function rng(seed) {
+    let a = seed >>> 0;
+    const u = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    return () => Math.sqrt(-2 * Math.log(u() + 1e-12)) * Math.cos(2 * Math.PI * u());
+  }
+
+  // ---------- DSP: 2nd-order Butterworth low-pass (bilinear transform) ----------
+  function design(fc) {
+    const w = Math.tan(Math.PI * fc / FS), k = Math.SQRT2, n = 1 / (1 + k * w + w * w);
+    const b0 = w * w * n;
+    return { b0, b1: 2 * b0, b2: b0, a1: 2 * (w * w - 1) * n, a2: (1 - k * w + w * w) * n };
+  }
+  function lagMs(c, f) {
+    const w = 2 * Math.PI * f / FS, cr = Math.cos(w), si = Math.sin(w), c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
+    const nr = c.b0 + c.b1 * cr + c.b2 * c2, ni = -(c.b1 * si + c.b2 * s2);
+    const dr = 1 + c.a1 * cr + c.a2 * c2, di = -(c.a1 * si + c.a2 * s2);
+    const ph = Math.atan2(ni, nr) - Math.atan2(di, dr);
+    return -ph / (2 * Math.PI * f) * 1000;
+  }
+
+  // ---------- driver steering ----------
+  function steer(t, man, amp) {
+    if (man === 'slalom') return (t > 0.5 && t < 6) ? amp * Math.sin(2 * Math.PI * 0.5 * t) : 0;
+    if (man === 'swerve') return (t >= 0.5 && t < 1.5) ? 1.5 * amp * Math.sin(2 * Math.PI * (t - 0.5)) : 0;
+    return (t >= 0.5 && t < 5) ? amp : 0;
+  }
+
+  // ---------- simulation: mode is 'off', 'raw' or 'filt' ----------
+  function sim(mode) {
+    const amp = S.amp * Math.PI / 180, vx = S.spd, mu = S.mu, sigma = S.sig;
+    const randn = rng(3), c = design(S.fc);
+    const tire = (al, C, Fz) => mu * Fz * Math.tanh(C * al / (mu * Fz));
+    const rlim = 0.85 * mu * P.g / vx;
+    const N = Math.round(T / DT), out = { t: [], r: [], rdes: [], rm: [], rfb: [], Mz: [], beta: [], X: [], Y: [] };
+    let vy = 0, r = 0, psi = 0, X = 0, Y = 0, Mz = 0, I = 0, rm = 0, rfb = 0, rdes = 0, z1 = 0, z2 = 0;
+    for (let i = 0; i < N; i++) {
+      const t = i * DT, d = steer(t, S.man, amp);
+      if (i % STEP === 0) {
+        rm = r + sigma * randn() + 1.25 * sigma * Math.sin(2 * Math.PI * 45 * t);
+        const y = c.b0 * rm + z1; z1 = c.b1 * rm - c.a1 * y + z2; z2 = c.b2 * rm - c.a2 * y;
+        rfb = mode === 'filt' ? y : rm;
+        rdes = Math.max(-rlim, Math.min(rlim, vx * d / (P.L + P.Kus * vx * vx)));
+        const e = rdes - rfb;
+        if (mode === 'off') Mz = 0;
+        else { I = Math.max(-0.3, Math.min(0.3, I + e * TS)); Mz = Math.max(-MZMAX, Math.min(MZMAX, KP * e + KI * I)); }
+        out.t.push(t); out.r.push(r); out.rdes.push(rdes); out.rm.push(rm); out.rfb.push(rfb);
+        out.Mz.push(Mz); out.beta.push(Math.atan2(vy, vx) * 180 / Math.PI); out.X.push(X); out.Y.push(Y);
+      }
+      const af = d - (vy + P.a * r) / vx, ar = -(vy - P.b * r) / vx;
+      const Ff = tire(af, P.Cf, P.Fzf), Fr = tire(ar, P.Cr, P.Fzr);
+      vy += ((Ff * Math.cos(d) + Fr) / P.m - vx * r) * DT;
+      r += ((P.a * Ff * Math.cos(d) - P.b * Fr + Mz) / P.Iz) * DT;
+      psi += r * DT;
+      X += (vx * Math.cos(psi) - vy * Math.sin(psi)) * DT;
+      Y += (vx * Math.sin(psi) + vy * Math.cos(psi)) * DT;
+    }
+    return out;
+  }
+
+  const idxAt = t => Math.max(0, Math.min(1599, Math.round(t / (STEP * DT))));
+  const rms = a => Math.sqrt(a.reduce((s, v) => s + v * v, 0) / a.length);
+  const absMax = a => a.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+  let R = null, esc = null, M = null;
+
+  function status(peak) {
+    if (peak < 4) return ['Stable', 'ok'];
+    if (peak < 8) return ['Sliding', 'warn'];
+    return ['Loss of control', 'bad'];
+  }
+
+  function recompute() {
+    R = { off: sim('off'), raw: sim('raw'), filt: sim('filt') };
+    esc = S.filt ? R.filt : R.raw;
+    const err = o => rms(o.rdes.map((v, i) => v - o.r[i]));
+    const chat = o => rms(o.Mz.slice(1).map((v, i) => v - o.Mz[i]));
+    M = {
+      eOff: err(R.off), eEsc: err(esc), bOff: absMax(R.off.beta), bEsc: absMax(esc.beta), cEsc: chat(esc),
+      lag: S.filt ? lagMs(design(S.fc), 1) : 0
+    };
+    window.__esc = M;
+    const so = status(M.bOff), se = status(M.bEsc);
+    $('stOff').innerHTML = `<span class="chip ${so[1]}">${so[0]}</span>`;
+    $('stEsc').innerHTML = `<span class="chip ${se[1]}">${se[0]}</span>`;
+    $('eOff').textContent = M.eOff.toFixed(3);
+    $('eEsc').textContent = M.eEsc.toFixed(3);
+    $('eEsc').className = 'num' + (M.eEsc < M.eOff ? ' good' : '');
+    $('bOff').textContent = M.bOff.toFixed(2);
+    $('bEsc').textContent = M.bEsc.toFixed(2);
+    $('bEsc').className = 'num' + (M.bEsc < M.bOff ? ' good' : '');
+    $('cEsc').textContent = M.cEsc.toFixed(0);
+    $('lagEsc').textContent = S.filt ? M.lag.toFixed(0) : 'none';
+    $('dspNode').textContent = S.filt ? `${S.fc} Hz low-pass at 200 Hz, ${M.lag.toFixed(0)} ms lag at 1 Hz` : 'Bypassed: raw signal fed back';
+    drawAll();
+  }
+
+  // ---------- drawing helpers ----------
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  function fit(cv) {
+    const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const w = Math.max(10, r.width), h = Math.max(10, r.height);
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+    return { ctx, w, h };
+  }
+  function ticks(lo, hi, n) {
+    const span = hi - lo, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag;
+    const step = (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * mag, out = [];
+    for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(Math.abs(v) < 1e-9 ? 0 : v);
+    return { out, step };
+  }
+  const fmt = (v, step) => step >= 1 ? v.toFixed(0) : v.toFixed(Math.max(0, Math.min(4, -Math.floor(Math.log10(step)))));
+
+  const MARG = { l: 52, r: 12, t: 8, b: 24 };
+  function chart(id, series, tcur) {
+    const cv = $(id), { ctx, w, h } = fit(cv);
+    const ink = css('--ink'), muted = css('--muted'), line = css('--line');
+    let lo = 0, hi = 0;
+    series.forEach(s => s.y.forEach(v => { if (v < lo) lo = v; if (v > hi) hi = v; }));
+    if (hi - lo < 1e-9) { hi = 1; lo = -1; }
+    const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+    const px = t => MARG.l + t / T * (w - MARG.l - MARG.r), py = v => MARG.t + (1 - (v - lo) / (hi - lo)) * (h - MARG.t - MARG.b);
+    ctx.font = '11px ' + css('--f-data'); ctx.textBaseline = 'middle';
+    const yt = ticks(lo, hi, 4);
+    ctx.lineWidth = 1;
+    yt.out.forEach(v => {
+      ctx.strokeStyle = v === 0 ? muted : line; ctx.globalAlpha = v === 0 ? 0.55 : 1;
+      ctx.beginPath(); ctx.moveTo(MARG.l, py(v)); ctx.lineTo(w - MARG.r, py(v)); ctx.stroke(); ctx.globalAlpha = 1;
+      ctx.fillStyle = muted; ctx.textAlign = 'right'; ctx.fillText(fmt(v, yt.step), MARG.l - 6, py(v));
+    });
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (let s = 0; s <= T; s++) { ctx.fillStyle = muted; ctx.fillText(s + (s === T ? ' s' : ''), px(s), h - MARG.b + 6); }
+    ctx.save(); ctx.beginPath(); ctx.rect(MARG.l, MARG.t - 2, w - MARG.l - MARG.r, h - MARG.t - MARG.b + 4); ctx.clip();
+    series.forEach(s => {
+      ctx.strokeStyle = css(s.color); ctx.lineWidth = s.w || 1.6; ctx.globalAlpha = s.alpha == null ? 1 : s.alpha;
+      ctx.setLineDash(s.dash || []); ctx.lineJoin = 'round'; ctx.beginPath();
+      s.y.forEach((v, i) => { const x = px(R.off.t[i]), y = py(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.stroke();
+    });
+    ctx.restore(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    ctx.strokeStyle = ink; ctx.globalAlpha = 0.5; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px(tcur), MARG.t); ctx.lineTo(px(tcur), h - MARG.b); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+
+  function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+
+  const LANE_H = 106, LANE_GAP = 10, LANE_TOP = 6;
+  function lanes(tcur) {
+    const cv = $('lanes'), { ctx, w, h } = fit(cv);
+    const ink = css('--ink'), muted = css('--muted'), road = css('--road'), line = css('--line');
+    const items = [{ o: R.off, label: 'No ESC', col: css('--s-off'), pk: M.bOff }, { o: esc, label: 'With ESC', col: css('--s-esc'), pk: M.bEsc }];
+    const xmax = Math.max(R.off.X[R.off.X.length - 1], esc.X[esc.X.length - 1]);
+    const x0 = 14, sx = (w - x0 - 14) / xmax;
+    const maxY = Math.max(absMax(R.off.Y), absMax(esc.Y), 0.05);
+    const ypm = Math.min((LANE_H / 2 - 16) / maxY, sx * 25), expo = ypm / sx;
+    $('scaleNote').textContent = `Lateral scale ×${expo.toFixed(0)} · sideslip ×6`;
+    const idx = idxAt(tcur);
+    items.forEach((it, k) => {
+      const top = LANE_TOP + k * (LANE_H + LANE_GAP), yc = top + LANE_H / 2;
+      ctx.fillStyle = road; roundRect(ctx, 0, top, w, LANE_H, 6); ctx.fill();
+      ctx.strokeStyle = muted; ctx.globalAlpha = 0.45; ctx.setLineDash([8, 8]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, yc); ctx.lineTo(w, yc); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+      const pt = i => [x0 + it.o.X[i] * sx, yc - it.o.Y[i] * ypm];
+      ctx.lineWidth = 2; ctx.strokeStyle = it.col; ctx.lineJoin = 'round';
+      ctx.globalAlpha = 0.28; ctx.beginPath(); it.o.X.forEach((_, i) => { const p = pt(i); i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }); ctx.stroke();
+      ctx.globalAlpha = 1; ctx.beginPath(); for (let i = 0; i <= idx; i++) { const p = pt(i); i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); } ctx.stroke();
+      // car glyph: oriented along the drawn path, rotated by the exaggerated sideslip
+      const i0 = Math.max(0, idx - 2), i1 = Math.min(it.o.X.length - 1, idx + 2);
+      const tang = Math.atan2(-(it.o.Y[i1] - it.o.Y[i0]) * ypm, (it.o.X[i1] - it.o.X[i0]) * sx);
+      const head = tang + 6 * it.o.beta[idx] * Math.PI / 180;
+      const p = pt(idx);
+      ctx.save(); ctx.translate(p[0], p[1]);
+      ctx.strokeStyle = ink; ctx.globalAlpha = 0.55; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(tang) * 34, Math.sin(tang) * 34); ctx.stroke(); ctx.globalAlpha = 1;
+      ctx.rotate(head); ctx.fillStyle = it.col; roundRect(ctx, -12, -6, 24, 12, 3); ctx.fill();
+      ctx.fillStyle = css('--surface'); ctx.fillRect(2, -4.5, 5, 9);
+      ctx.restore();
+      ctx.font = '500 12px ' + css('--f-body'); ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = ink;
+      ctx.fillText(`${it.label}  ·  peak sideslip ${it.pk.toFixed(1)}°`, 10, top + 7);
+    });
+    ctx.font = '11px ' + css('--f-data'); ctx.fillStyle = muted; ctx.textBaseline = 'top'; ctx.textAlign = 'center';
+    const baseY = LANE_TOP + 2 * LANE_H + LANE_GAP + 5;
+    for (let m = 0; m <= xmax; m += 50) ctx.fillText(m + (m + 50 > xmax ? ' m' : ''), x0 + m * sx, baseY);
+  }
+
+  function readout(tcur) {
+    const i = idxAt(tcur);
+    $('tlabel').textContent = 't = ' + tcur.toFixed(2) + ' s';
+    $('readout').innerHTML =
+      `<span>Yaw rate, no ESC <b>${R.off.r[i].toFixed(3)}</b></span><span>Yaw rate, ESC <b>${esc.r[i].toFixed(3)}</b></span>` +
+      `<span>Sideslip, no ESC <b>${R.off.beta[i].toFixed(2)}°</b></span><span>Sideslip, ESC <b>${esc.beta[i].toFixed(2)}°</b></span>` +
+      `<span>Desired yaw rate <b>${R.off.rdes[i].toFixed(3)}</b></span><span>Mz command <b>${esc.Mz[i].toFixed(0)} N·m</b></span>`;
+  }
+
+  let tcur = 0, playing = false, last = 0, queued = false;
+  function drawAll() {
+    if (!R) return;
+    lanes(tcur);
+    chart('c1', [
+      { y: R.off.rdes, color: '--s-true', dash: [5, 4], w: 1.3 },
+      { y: R.off.r, color: '--s-off' }, { y: esc.r, color: '--s-esc', w: 2 }], tcur);
+    chart('c2', [{ y: R.off.beta, color: '--s-off' }, { y: esc.beta, color: '--s-esc', w: 2 }], tcur);
+    chart('c3', [
+      { y: R.raw.Mz, color: '--s-raw', w: S.filt ? 1 : 2, alpha: S.filt ? 0.55 : 1 },
+      { y: R.filt.Mz, color: '--s-filt', w: S.filt ? 2 : 1, alpha: S.filt ? 1 : 0.55 }], tcur);
+    chart('c4', [
+      { y: R.filt.rm, color: '--s-sens', w: 1, alpha: 0.9 },
+      { y: R.filt.rfb, color: '--s-filt', w: 2, alpha: S.filt ? 1 : 0.4 },
+      { y: R.filt.r, color: '--s-true', dash: [4, 3], w: 1.2 }], tcur);
+    readout(tcur);
+  }
+  function schedule() { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; drawAll(); }); }
+
+  function setTime(t) { tcur = Math.max(0, Math.min(T, t)); $('scrub').value = tcur; schedule(); }
+  function tick(ts) {
+    if (!playing) return;
+    tcur = Math.max(0, Math.min(T, tcur + Math.max(0, ts - last) / 1000)); last = ts;
+    $('scrub').value = tcur; drawAll();
+    if (tcur >= T) { playing = false; $('run').textContent = 'Replay'; return; }
+    requestAnimationFrame(tick);
+  }
+  function play() { tcur = 0; playing = true; $('run').textContent = 'Running'; last = performance.now(); requestAnimationFrame(tick); }
+  function stop() { if (playing) { playing = false; $('run').textContent = 'Replay'; } }
+
+  // ---------- controls ----------
+  const outs = {
+    amp: v => v.toFixed(1) + '°', spd: v => v + ' m/s (' + (v * 3.6).toFixed(0) + ' km/h)', mu: v => v.toFixed(2),
+    fc: v => v + ' Hz', sig: v => v.toFixed(3) + ' rad/s'
+  };
+  function syncUI() {
+    $('man').value = S.man; $('filt').checked = S.filt;
+    ['amp', 'spd', 'mu', 'fc', 'sig'].forEach(k => { $(k).value = S[k]; $(k + 'O').textContent = outs[k](+S[k]); });
+    $('fc').disabled = !S.filt;
+  }
+  ['amp', 'spd', 'mu', 'fc', 'sig'].forEach(k => $(k).addEventListener('input', e => { S[k] = +e.target.value; syncUI(); recompute(); }));
+  $('man').addEventListener('change', e => { S.man = e.target.value; recompute(); play(); });
+  $('filt').addEventListener('change', e => { S.filt = e.target.checked; syncUI(); recompute(); });
+  $('run').addEventListener('click', play);
+  $('scrub').addEventListener('input', e => { stop(); setTime(+e.target.value); });
+  $('reset').addEventListener('click', () => { Object.assign(S, DEFAULTS); syncUI(); recompute(); play(); });
+  const PRESETS = {
+    raw: { filt: false, sig: 0.04 },
+    slow: { filt: true, fc: 1 },
+    ice: { mu: 0.2, spd: 30, amp: 3 }
+  };
+  document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
+    Object.assign(S, DEFAULTS, PRESETS[b.dataset.preset]); syncUI(); recompute(); play();
+    $('lanes').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
+
+  // scrub by dragging on any plot
+  ['lanes', 'c1', 'c2', 'c3', 'c4'].forEach(id => {
+    const cv = $(id); let down = false;
+    const at = e => {
+      const r = cv.getBoundingClientRect(), l = id === 'lanes' ? 14 : MARG.l, rr = id === 'lanes' ? 14 : MARG.r;
+      stop(); setTime((e.clientX - r.left - l) / (r.width - l - rr) * T);
+    };
+    cv.addEventListener('pointerdown', e => { down = true; cv.setPointerCapture(e.pointerId); at(e); });
+    cv.addEventListener('pointermove', e => { if (down) at(e); });
+    cv.addEventListener('pointerup', () => { down = false; });
+    cv.addEventListener('pointercancel', () => { down = false; });
+  });
+
+  if (window.ResizeObserver) new ResizeObserver(schedule).observe(document.querySelector('.wrap'));
+  window.addEventListener('resize', schedule);
+  if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', schedule);
+  new MutationObserver(schedule).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  syncUI(); recompute();
+  tcur = T; $('scrub').value = T; drawAll();
+  if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) play();
+  window.__escTest = { S, recompute, syncUI };
+})();
+</script>
+
+</body></html>
